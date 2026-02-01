@@ -1,0 +1,351 @@
+openapi: 3.1.0
+info:
+  title: CleanSeam API
+  description: |
+    Quality scoring and cost-per-wear analysis for clothing purchases.
+    Helps consumers make informed buying decisions based on durability and value.
+  version: 1.0.0
+  contact:
+    name: CleanSeam
+    url: https://cleanseam.ai
+
+servers:
+  - url: https://api.cleanseam.ai
+    description: Production API
+
+paths:
+  /analyze:
+    post:
+      operationId: analyzeItem
+      summary: Analyze a clothing item for quality and value
+      description: |
+        Returns quality score, predicted lifespan, and cost-per-wear estimate
+        for a clothing item. Can analyze based on brand/category or scrape a URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+            examples:
+              basic:
+                summary: Basic analysis by brand
+                value:
+                  brand: "Zara"
+                  item_type: "jeans"
+                  price: 49.99
+              with_composition:
+                summary: With material composition
+                value:
+                  brand: "H&M"
+                  item_type: "t-shirt"
+                  price: 19.99
+                  material_composition: "60% cotton, 40% polyester"
+              with_url:
+                summary: Analyze from product URL
+                value:
+                  url: "https://www.zara.com/product/12345"
+                  price: 79.99
+      responses:
+        '200':
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /brand/{brand_name}:
+    get:
+      operationId: getBrandProfile
+      summary: Get quality profile for a brand
+      description: Returns overall brand quality metrics and scores by category
+      parameters:
+        - name: brand_name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Brand name (case-insensitive)
+          example: "Patagonia"
+      responses:
+        '200':
+          description: Brand profile found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandProfile'
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /compare:
+    get:
+      operationId: compareBrands
+      summary: Compare quality between brands
+      description: Side-by-side comparison of brands for a specific category
+      parameters:
+        - name: brands
+          in: query
+          required: true
+          schema:
+            type: array
+            items:
+              type: string
+            minItems: 2
+            maxItems: 5
+          style: form
+          explode: true
+          description: Brands to compare (2-5)
+          example: ["Zara", "Uniqlo", "H&M"]
+        - name: category
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [jeans, t-shirt, shirt, sweater, jacket, coat, dress, pants, shorts, underwear, socks, shoes, accessories]
+          description: Product category
+          example: "jeans"
+      responses:
+        '200':
+          description: Comparison results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComparisonResponse'
+
+  /categories:
+    get:
+      operationId: getCategories
+      summary: List supported product categories
+      responses:
+        '200':
+          description: List of categories with average scores
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoriesList'
+
+components:
+  schemas:
+    AnalyzeRequest:
+      type: object
+      properties:
+        brand:
+          type: string
+          description: Brand name
+          example: "Zara"
+        item_type:
+          type: string
+          description: Type of clothing item
+          example: "jeans"
+        price:
+          type: number
+          format: float
+          description: Price in user's currency
+          example: 49.99
+        currency:
+          type: string
+          default: "USD"
+          description: Currency code
+          example: "AED"
+        material_composition:
+          type: string
+          description: Material breakdown if known
+          example: "98% cotton, 2% elastane"
+        url:
+          type: string
+          format: uri
+          description: Product URL for scraping additional data
+          example: "https://www.zara.com/product/12345"
+      oneOf:
+        - required: [brand, item_type, price]
+        - required: [url, price]
+
+    AnalyzeResponse:
+      type: object
+      required:
+        - quality_score
+        - predicted_wears
+        - cost_per_wear
+        - verdict
+      properties:
+        quality_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+          description: Overall quality score (0-10)
+          example: 3.2
+        predicted_wears:
+          type: integer
+          description: Estimated number of wears before replacement
+          example: 45
+        predicted_lifespan_months:
+          type: integer
+          description: Estimated lifespan in months with regular use
+          example: 18
+        cost_per_wear:
+          type: number
+          format: float
+          description: Price divided by predicted wears
+          example: 1.11
+        verdict:
+          type: string
+          description: Human-readable assessment
+          example: "Below average for price point. Consider alternatives."
+        factors:
+          type: object
+          properties:
+            material_score:
+              type: number
+              example: 4.0
+            brand_reliability:
+              type: number
+              example: 3.5
+            construction_estimate:
+              type: number
+              example: 2.8
+            value_ratio:
+              type: number
+              example: 2.5
+          description: Breakdown of scoring factors
+        brand_average:
+          type: number
+          description: Average score for this brand overall
+          example: 3.5
+        category_average:
+          type: number
+          description: Average score for this category across all brands
+          example: 5.2
+        better_alternatives:
+          type: array
+          items:
+            type: object
+            properties:
+              brand:
+                type: string
+              score:
+                type: number
+              typical_price_range:
+                type: string
+          description: Higher-scoring alternatives in similar price range
+          example:
+            - brand: "Uniqlo"
+              score: 5.8
+              typical_price_range: "$40-60"
+        waitlist_url:
+          type: string
+          format: uri
+          description: Link to join the CleanSeam app waitlist
+          example: "https://cleanseam.ai/join"
+
+    BrandProfile:
+      type: object
+      required:
+        - name
+        - overall_score
+        - tier
+      properties:
+        name:
+          type: string
+          example: "Patagonia"
+        overall_score:
+          type: number
+          format: float
+          example: 7.8
+        tier:
+          type: string
+          enum: [fast_fashion, budget, mid_range, premium, luxury]
+          example: "premium"
+        description:
+          type: string
+          example: "Known for durability and ethical manufacturing"
+        category_scores:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            jackets: 8.5
+            t-shirts: 7.2
+            pants: 7.0
+        avg_lifespan_months:
+          type: integer
+          example: 48
+        data_confidence:
+          type: string
+          enum: [low, medium, high]
+          description: How much data we have on this brand
+          example: "high"
+
+    ComparisonResponse:
+      type: object
+      properties:
+        category:
+          type: string
+          example: "jeans"
+        brands:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              score:
+                type: number
+              typical_price:
+                type: string
+              predicted_wears:
+                type: integer
+              cost_per_wear_estimate:
+                type: number
+          example:
+            - name: "Uniqlo"
+              score: 5.8
+              typical_price: "$40-50"
+              predicted_wears: 80
+              cost_per_wear_estimate: 0.56
+            - name: "Zara"
+              score: 3.2
+              typical_price: "$45-60"
+              predicted_wears: 45
+              cost_per_wear_estimate: 1.17
+        recommendation:
+          type: string
+          example: "Uniqlo offers better value with 77% more predicted wears at similar price point"
+
+    CategoriesList:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              avg_score:
+                type: number
+              avg_lifespan_months:
+                type: integer
+
+    Error:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          example: "invalid_request"
+        message:
+          type: string
+          example: "Brand or URL is required"
